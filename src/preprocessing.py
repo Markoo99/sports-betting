@@ -35,7 +35,7 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    from src.data_loading import load_raw_data
+    from data_loading import load_raw_data
 
     df_raw = load_raw_data()
     df_clean = preprocess_data(df_raw)
@@ -44,4 +44,4 @@ if __name__ == "__main__":
     print("Clean shape:", df_clean.shape)
     print(df_clean.head())
 
-    df_clean.to_csv("data/cleaned_data.csv", index = False) #This code saves the cleaned dataframe as a CSV file inside the repo. This will help fix the ongoing issue with the dataset in the multiple thresholds file.
+    df_clean.to_csv("data/cleaned_data.csv", index = False) #save the clean dataset
