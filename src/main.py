@@ -10,7 +10,7 @@ DATA_PATH = Path("data") / "oddsData.csv"
 
 def load_raw_data(path: Union[str, Path] = DATA_PATH) -> pd.DataFrame:
     """
-    Load the raw NBA odds dataset from a CSV file 
+    Load the raw NBA odds dataset from a CSV file
     
     """
     csv_path = Path(path)
