@@ -822,8 +822,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     args = parser.parse_args(argv)
     # if no cmd is given, this allows to run the entire model without fail 
     if args.cmd is None:
-    run_simple_efficiency()
-    run_advanced_efficiency()
+        run_simple_efficiency()
+        run_advanced_efficiency()
     return
 
 
