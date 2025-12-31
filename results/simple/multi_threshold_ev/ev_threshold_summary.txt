@@ -1,0 +1,23 @@
+EV SUMMARY ACROSS THRESHOLDS
+
+Threshold: 0.005
+Number of bets: 35902
+Hit rate: 0.5104451005515013
+Avg EV (model): -0.9886372575634821
+Avg EV (market): -0.8737997883126289
+Avg realized return: -0.9662059216756729
+
+Threshold: 0.01
+Number of bets: 29638
+Hit rate: 0.4967946555098185
+Avg EV (model): -1.1020265778152267
+Avg EV (market): -0.9677893245158243
+Avg realized return: -1.0630233146636077
+
+Threshold: 0.02
+Number of bets: 18985
+Hit rate: 0.48533052409797206
+Avg EV (model): -1.3303301206142768
+Avg EV (market): -1.1407295233078747
+Avg realized return: -1.241566236502502
+
