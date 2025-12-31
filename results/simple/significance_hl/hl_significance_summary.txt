@@ -1,0 +1,29 @@
+CALIBRATION TESTS (Hosmer–Lemeshow)
+
+Bookmaker probabilities:
+  HL statistic : 51.245381
+  p-value      : 0.000000
+
+Model probabilities:
+  HL statistic : 31.842595
+  p-value      : 0.000099
+
+PAIRED TESTS (Bookmaker vs Model)
+
+Log-loss:
+  LL(book)     : 0.595952
+  LL(model)    : 0.595383
+  mean diff    : 0.000569  (positive means model better)
+  t-stat       : 0.646910
+  p-value      : 0.517710
+
+Brier:
+  Brier(book)  : 0.205073
+  Brier(model) : 0.204896
+  mean diff    : 0.000177  (positive means model better)
+  t-stat       : 0.713000
+  p-value      : 0.475868
+
+ROI tests (from any bet CSVs that contain a 'profit' column)
+Note: multi-threshold EV saves profit; single EV saves realized_return.
+

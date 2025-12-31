@@ -1,0 +1,3 @@
+ev_bets_edge_0.005.csv: n=35902, mean_profit=-0.966206, t=-61.419, p=0.000000
+ev_bets_edge_0.010.csv: n=29638, mean_profit=-1.063023, t=-58.025, p=0.000000
+ev_bets_edge_0.020.csv: n=18985, mean_profit=-1.241566, t=-47.457, p=0.000000
