@@ -1,0 +1,4 @@
+              model  acc_train  acc_test  roc_train  roc_test  logloss_train  logloss_test  brier_train  brier_test
+logistic_regression   1.000000  1.000000   1.000000  1.000000       0.000294      0.000307     0.000002    0.000002
+  gradient_boosting   0.999640  0.999736   0.999999  1.000000       0.032128      0.034160     0.005364    0.005859
+      random_forest   0.996548  0.975977   0.999947  0.997647       0.116915      0.194648     0.020511    0.043975
