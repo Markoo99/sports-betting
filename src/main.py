@@ -794,7 +794,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description="Main runner (simple + advanced).")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub = parser.add_subparsers(dest="cmd", required=False)
 
     # -------- Simple commands (unchanged)
     sub.add_parser("simple-backtest")
