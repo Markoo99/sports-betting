@@ -509,7 +509,9 @@ def run_advanced_ev_full() -> None:
 
     # Merge by row_id to guarantee alignment
     if "row_id" not in raw.columns:
-        raise ValueError("cleaned_data.csv missing row_id. Delete it and re-run so it gets regenerated.")
+        raw = raw.reset_index(drop=True).copy()
+        raw["row_id"] = np.arange(len(raw))
+
     if "row_id" not in preds.columns:
         raise ValueError("advanced_predictions.csv missing row_id. Re-run advanced-train.")
 
