@@ -737,25 +737,25 @@ plt.savefig(out_path, dpi=300)
 plt.close()
 
     # 4-6) EV/profit/edge plots on test set
-    test_df["market_prob"] = test_df["moneyLine"].apply(moneyline_to_prob)
-    test_df["EV"] = test_df.apply(lambda r: expected_value(r["logit_prob"], r["moneyLine"]), axis=1)
-    test_df["edge"] = test_df["logit_prob"] - test_df["market_prob"]
+test_df["market_prob"] = test_df["moneyLine"].apply(moneyline_to_prob)
+test_df["EV"] = test_df.apply(lambda r: expected_value(r["logit_prob"], r["moneyLine"]), axis=1)
+test_df["edge"] = test_df["logit_prob"] - test_df["market_prob"]
 
-    def profit_row(r: pd.Series) -> float:
-        if r["win"] == 1:
-            if r["moneyLine"] > 0:
-                return r["moneyLine"] / 100
-            return 100 / abs(r["moneyLine"])
-        return -1.0
+def profit_row(r: pd.Series) -> float:
+    if r["win"] == 1:
+        if r["moneyLine"] > 0:
+            return r["moneyLine"] / 100
+        return 100 / abs(r["moneyLine"])
+    return -1.0
 
-    test_df["profit"] = test_df.apply(profit_row, axis=1)
-    test_df["ev_bucket"] = pd.qcut(test_df["EV"], 10, labels=False, duplicates="drop")
+test_df["profit"] = test_df.apply(profit_row, axis=1)
+test_df["ev_bucket"] = pd.qcut(test_df["EV"], 10, labels=False, duplicates="drop")
 
-    bucket = (
-        test_df.groupby("ev_bucket")
-        .agg(avg_EV=("EV", "mean"), avg_profit=("profit", "mean"), total_profit=("profit", "sum"), count=("profit", "count"))
-        .reset_index()
-    )
+bucket = (
+    test_df.groupby("ev_bucket")
+    .agg(avg_EV=("EV", "mean"), avg_profit=("profit", "mean"), total_profit=("profit", "sum"), count=("profit", "count"))
+    .reset_index()
+)
 
     # EV by bucket
 plt.figure()
