@@ -20,12 +20,6 @@ from sklearn.calibration import calibration_curve
 from scipy import stats
 
 import matplotlib.pyplot as plt
-
-
-# ------------------------------------------------------------
-# Imports from your separate modules for SIMPLE MODEL
-# (NOT copied into this file)
-# ------------------------------------------------------------
 try:
     # when running `python -m src.main ...`
     from .data_loading import load_raw_data  # type: ignore
@@ -113,7 +107,7 @@ def _ensure_cleaned_csv() -> Path:
 
 
 # ============================================================
-# ===================== SIMPLE MODEL (unchanged) =====================
+# ===================== SIMPLE MODEL =====================
 # ============================================================
 
 def train_model_for_backtest(
@@ -789,7 +783,8 @@ def run_advanced_efficiency() -> None:
 
 # main() function centralizes all execution logic so the file can act as a single reproducible entrypoint for the project.
 # Accepting argv explicitly also allows programmatic execution without relying on sys.argv.
-
+# in the sub = parser.ad... function, I changed the "required" part. Before, when it was "required = True", 
+# I wasn't able to run the entire code. Changing this to False allows anybody to run the entire pipeline.
 def main(argv: Optional[List[str]] = None) -> None:
     import argparse
 
@@ -811,7 +806,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_eff = sub.add_parser("simple-efficiency")
     p_eff.add_argument("--edge-threshold", type=float, default=0.02)
 
-    # -------- Advanced commands (new)
+    # -------- Advanced commands 
     sub.add_parser("advanced-train")
     sub.add_parser("advanced-ev")
     sub.add_parser("advanced-test-ev")
