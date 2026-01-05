@@ -724,17 +724,17 @@ plt.savefig(out_path, dpi=300)
 plt.close()
 
     # 3) Calibration curve (test set)
-    prob_true, prob_pred = calibration_curve(y_true, y_score, n_bins=10, strategy="quantile")
-    plt.figure()
-    plt.plot(prob_pred, prob_true, marker="o")
-    plt.plot([0, 1], [0, 1], linestyle="--")
-    plt.xlabel("Mean Predicted Probability")
-    plt.ylabel("Observed Win Rate")
-    plt.title("Calibration Curve (Test Set)")
-    plt.tight_layout()
-    out_path = ADV_DIR_FIG / "calibration_curve_test.png"
-    plt.savefig(out_path, dpi=300)
-    plt.close()
+prob_true, prob_pred = calibration_curve(y_true, y_score, n_bins=10, strategy="quantile")
+plt.figure()
+plt.plot(prob_pred, prob_true, marker="o")
+plt.plot([0, 1], [0, 1], linestyle="--")
+plt.xlabel("Mean Predicted Probability")
+plt.ylabel("Observed Win Rate")
+plt.title("Calibration Curve (Test Set)")
+plt.tight_layout()
+out_path = ADV_DIR_FIG / "calibration_curve_test.png"
+plt.savefig(out_path, dpi=300)
+plt.close()
 
     # 4-6) EV/profit/edge plots on test set
     test_df["market_prob"] = test_df["moneyLine"].apply(moneyline_to_prob)
@@ -758,39 +758,39 @@ plt.close()
     )
 
     # EV by bucket
-    plt.figure()
-    plt.plot(bucket["ev_bucket"], bucket["avg_EV"], marker="o")
-    plt.xlabel("EV Bucket")
-    plt.ylabel("Average EV")
-    plt.title("Average EV by Bucket (Test Set)")
-    plt.tight_layout()
-    out_path = ADV_DIR_FIG / "ev_by_bucket_test.png"
-    plt.savefig(out_path, dpi=300)
-    plt.close()
+plt.figure()
+plt.plot(bucket["ev_bucket"], bucket["avg_EV"], marker="o")
+plt.xlabel("EV Bucket")
+plt.ylabel("Average EV")
+plt.title("Average EV by Bucket (Test Set)")
+plt.tight_layout()
+out_path = ADV_DIR_FIG / "ev_by_bucket_test.png"
+plt.savefig(out_path, dpi=300)
+plt.close()
 
     # Profit by bucket
-    plt.figure()
-    plt.plot(bucket["ev_bucket"], bucket["total_profit"], marker="o")
-    plt.xlabel("EV Bucket")
-    plt.ylabel("Total Profit")
-    plt.title("Total Profit by Bucket (Test Set)")
-    plt.tight_layout()
-    out_path = ADV_DIR_FIG / "profit_by_bucket_test.png"
-    plt.savefig(out_path, dpi=300)
-    plt.close()
+plt.figure()
+plt.plot(bucket["ev_bucket"], bucket["total_profit"], marker="o")
+plt.xlabel("EV Bucket")
+plt.ylabel("Total Profit")
+plt.title("Total Profit by Bucket (Test Set)")
+plt.tight_layout()
+out_path = ADV_DIR_FIG / "profit_by_bucket_test.png"
+plt.savefig(out_path, dpi=300)
+plt.close()
 
     # Edge vs profit scatter
-    plt.figure()
-    plt.scatter(test_df["edge"], test_df["profit"], s=10)
-    plt.xlabel("Edge (model_prob - market_prob)")
-    plt.ylabel("Realized Profit")
-    plt.title("Edge vs Realized Profit (Test Set)")
-    plt.tight_layout()
-    out_path = ADV_DIR_FIG / "edge_vs_profit_test.png"
-    plt.savefig(out_path, dpi=300)
-    plt.close()
+plt.figure()
+plt.scatter(test_df["edge"], test_df["profit"], s=10)
+plt.xlabel("Edge (model_prob - market_prob)")
+plt.ylabel("Realized Profit")
+plt.title("Edge vs Realized Profit (Test Set)")
+plt.tight_layout()
+out_path = ADV_DIR_FIG / "edge_vs_profit_test.png"
+plt.savefig(out_path, dpi=300)
+plt.close()
 
-    print("[ADV FIGURES] Saved 6 figures to:", ADV_DIR_FIG)
+print("[ADV FIGURES] Saved 6 figures to:", ADV_DIR_FIG)
 
 
 def run_advanced_efficiency() -> None:
