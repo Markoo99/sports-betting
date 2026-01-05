@@ -33,7 +33,7 @@ except Exception:  # pragma: no cover
 
 
 # ============================================================
-# RESULTS FOLDERS (auto-created)
+# RESULTS FOLDERS 
 # ============================================================
 
 # this part of the code is meant to create two separate results directories in order to distinguish simple and advanced model outputs
@@ -99,8 +99,15 @@ def _ensure_cleaned_csv() -> Path:
     p = Path("data") / "cleaned_data.csv"
     if p.exists():
         return p
+
     df_raw = load_raw_data()
     df_clean = preprocess_data(df_raw)
+
+    # IMPORTANT: create a stable row_id so predictions can be merged back safely
+    # This avoids silent misalignment when advanced feature building drops rows
+    df_clean = df_clean.reset_index(drop=True)
+    df_clean["row_id"] = np.arange(len(df_clean))
+
     p.parent.mkdir(parents=True, exist_ok=True)
     df_clean.to_csv(p, index=False)
     return p
@@ -333,51 +340,56 @@ def run_simple_efficiency(edge_threshold: float = 0.02) -> None:
 
 
 # ============================================================
-# ===================== ADVANCED MODEL (NEW) =====================
+# ===================== ADVANCED MODEL =====================
 # ============================================================
 
 def build_advanced_features(path: str = "data/cleaned_data.csv") -> pd.DataFrame:
     """
-    WHY this exists:
-    - The advanced model expands the feature space beyond raw implied probabilities.
-    - This is the "stronger competitor" to the market that we use for Spearman/EV tests.
+    The advanced model expands the feature space beyond raw implied probabilities, it must only use information available pre-game to avoid leakage.
     """
     df = pd.read_csv(path)
 
-    # Bookmaker implied probabilities
+    # ------------------------------------------------------------
+    # remove post-game leakage columns because they directly influence the game outcome and make the AUC = 1 which is impossible
+    # ------------------------------------------------------------
+    leakage_cols = ["score", "opponentScore"]
+    df = df.drop(columns=[c for c in leakage_cols if c in df.columns])
+
+    # Bookmaker implied probabilities (pre-game)
     df["market_prob"] = df["moneyLine"].apply(moneyline_to_prob)
-    df["opp_market_prob"] = df["opponentMoneyLine"].apply(moneyline_to_prob) if "opponentMoneyLine" in df.columns else np.nan
+    if "opponentMoneyLine" in df.columns:
+        df["opp_market_prob"] = df["opponentMoneyLine"].apply(moneyline_to_prob)
 
-    # Nonlinear transforms 
-    if "market_prob" in df.columns:
-        df["market_prob_sq"] = df["market_prob"] ** 2
-        df["market_prob_logit"] = np.log(df["market_prob"].clip(1e-9, 1 - 1e-9) / (1 - df["market_prob"].clip(1e-9, 1 - 1e-9)))
+    # Nonlinear transforms (still pre-game)
+    df["market_prob_sq"] = df["market_prob"] ** 2
+    mp = df["market_prob"].clip(1e-9, 1 - 1e-9)
+    df["market_prob_logit"] = np.log(mp / (1 - mp))
 
-    # Home indicator if present. It is an important feature that can influence win probability 
+    # Home indicator if present (pre-game)
     if "home/visitor" in df.columns:
         df["is_home"] = (df["home/visitor"].astype(str).str.lower() == "home").astype(int)
 
-    # Keep season for time-based split
-    keep_cols = []
+    # Keep row_id for safe merging later
+    if "row_id" not in df.columns:
+        # If user already had cleaned_data.csv without row_id, create it defensively
+        df = df.reset_index(drop=True)
+        df["row_id"] = np.arange(len(df))
+
+    # Select columns: we allow numeric predictors + season + row_id + win
+    keep_cols: List[str] = []
     for c in df.columns:
-        if c == "season":
+        if c in {"row_id", "season", "win"}:
             keep_cols.append(c)
-        elif c == "win":
+        elif pd.api.types.is_numeric_dtype(df[c]):
             keep_cols.append(c)
-        else:
-            if pd.api.types.is_numeric_dtype(df[c]):
-                keep_cols.append(c)
 
     df = df[keep_cols].copy()
-
-    # Ensure win exists and is integer
     df["win"] = df["win"].astype(int)
 
-    # Drop rows with missing in key columns
-    df = df.dropna()
+    # Drop rows with missing values in predictors/target
+    df = df.dropna().copy()
 
     return df
-
 
 def train_test_split_by_season(df: pd.DataFrame, n_test_seasons: int = 2) -> Tuple[pd.Index, pd.Index]:
     """
@@ -486,25 +498,30 @@ def run_advanced_ev_full() -> None:
     - computes EV, edge, buckets, ROI by bucket
     """
     ensure_dir(ADV_DIR_EV)
+
     pred_path = ADV_DIR_PRED / "advanced_predictions.csv"
     if not pred_path.exists():
         raise FileNotFoundError(f"Missing advanced predictions: {pred_path}. Run `advanced-train` first.")
 
-    raw = pd.read_csv("data/cleaned_data.csv")
+    cleaned_path = _ensure_cleaned_csv()
+    raw = pd.read_csv(cleaned_path)
     preds = pd.read_csv(pred_path)
 
-    df = raw.copy()
-    df["logit_prob"] = preds["logit_prob"]
-    if "set" in preds.columns:
-        df["set"] = preds["set"]
+    # Merge by row_id to guarantee alignment
+    if "row_id" not in raw.columns:
+        raise ValueError("cleaned_data.csv missing row_id. Delete it and re-run so it gets regenerated.")
+    if "row_id" not in preds.columns:
+        raise ValueError("advanced_predictions.csv missing row_id. Re-run advanced-train.")
+
+    df = raw.merge(preds[["row_id", "logit_prob", "set"]], on="row_id", how="inner").copy()
 
     df["market_prob"] = df["moneyLine"].apply(moneyline_to_prob)
     df["EV"] = df.apply(lambda r: expected_value(r["logit_prob"], r["moneyLine"]), axis=1)
     df["edge"] = df["logit_prob"] - df["market_prob"]
 
-    df["ev_bucket"] = pd.qcut(df["EV"], 10, labels=False, duplicates="drop")
+    # Use true deciles robustly (avoids qcut collapsing due to ties)
+    df["ev_bucket"] = pd.qcut(df["EV"].rank(method="first"), 10, labels=False)
 
-    # Profit for 1 unit stake 
     def profit_row(r: pd.Series) -> float:
         if r["win"] == 1:
             if r["moneyLine"] > 0:
@@ -537,8 +554,7 @@ def run_advanced_ev_full() -> None:
 
 def run_advanced_ev_testset() -> None:
     """
-    Merged from test_set.py:
-    - same EV computation but restricted to rows labeled set=='test'
+    - restricted to rows labeled set=='test'
     - runs Spearman between avg_EV and ROI at bucket level
     """
     ensure_dir(ADV_DIR_TEST)
@@ -547,16 +563,18 @@ def run_advanced_ev_testset() -> None:
     if not pred_path.exists():
         raise FileNotFoundError(f"Missing advanced predictions: {pred_path}. Run `advanced-train` first.")
 
-    raw = pd.read_csv("data/cleaned_data.csv")
+    cleaned_path = _ensure_cleaned_csv()
+    raw = pd.read_csv(cleaned_path)
     preds = pd.read_csv(pred_path)
 
+    if "row_id" not in raw.columns:
+        raise ValueError("cleaned_data.csv missing row_id. Delete it and re-run so it gets regenerated.")
+    if "row_id" not in preds.columns:
+        raise ValueError("advanced_predictions.csv missing row_id. Re-run advanced-train.")
     if "set" not in preds.columns:
-        raise ValueError("Predictions file does not contain 'set' column. Re-run advanced-train.")
+        raise ValueError("Predictions file missing 'set'. Re-run advanced-train.")
 
-    df = raw.copy()
-    df["logit_prob"] = preds["logit_prob"]
-    df["set"] = preds["set"]
-
+    df = raw.merge(preds[["row_id", "logit_prob", "set"]], on="row_id", how="inner").copy()
     df = df[df["set"] == "test"].copy()
 
     df["market_prob"] = df["moneyLine"].apply(moneyline_to_prob)
@@ -571,7 +589,9 @@ def run_advanced_ev_testset() -> None:
         return -1.0
 
     df["profit"] = df.apply(profit_row, axis=1)
-    df["ev_bucket"] = pd.qcut(df["EV"], 10, labels=False, duplicates="drop")
+
+    # True deciles (robust to ties)
+    df["ev_bucket"] = pd.qcut(df["EV"].rank(method="first"), 10, labels=False)
 
     bucket_results = (
         df.groupby("ev_bucket")
@@ -584,7 +604,6 @@ def run_advanced_ev_testset() -> None:
         .reset_index()
     )
 
-    # Spearman significance on test-set buckets (as in your script)
     rho, pval = stats.spearmanr(bucket_results["avg_EV"], bucket_results["ROI"])
 
     out_csv = ADV_DIR_TEST / "test_ev_results.csv"
@@ -599,6 +618,7 @@ def run_advanced_ev_testset() -> None:
     print("[ADV TEST EV] Saved:", out_csv)
     print("[ADV TEST EV] Saved:", out_txt)
     print("[ADV TEST EV] Saved:", out_sig)
+
 
 
 def run_advanced_significance_from_full() -> None:
@@ -819,7 +839,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     if args.cmd is None:
         run_simple_efficiency()
         run_advanced_efficiency()
-    return
+        return
 
 
     # ---- Simple dispatch
