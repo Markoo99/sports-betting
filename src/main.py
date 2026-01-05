@@ -512,8 +512,11 @@ def run_advanced_ev_full() -> None:
         raw = raw.reset_index(drop=True).copy()
         raw["row_id"] = np.arange(len(raw))
 
+    # 
     if "row_id" not in preds.columns:
-        raise ValueError("advanced_predictions.csv missing row_id. Re-run advanced-train.")
+        preds = preds.reset_index(drop=True).copy()
+        preds["row_id"] = np.arange(len(preds))
+
 
     df = raw.merge(preds[["row_id", "logit_prob", "set"]], on="row_id", how="inner").copy()
 
@@ -572,7 +575,9 @@ def run_advanced_ev_testset() -> None:
     if "row_id" not in raw.columns:
         raise ValueError("cleaned_data.csv missing row_id. Delete it and re-run so it gets regenerated.")
     if "row_id" not in preds.columns:
-        raise ValueError("advanced_predictions.csv missing row_id. Re-run advanced-train.")
+        preds = preds.reset_index(drop=True).copy()
+        preds["row_id"] = np.arange(len(preds))
+
     if "set" not in preds.columns:
         raise ValueError("Predictions file missing 'set'. Re-run advanced-train.")
 
@@ -688,10 +693,17 @@ def run_advanced_figures() -> None:
     plt.close()
 
     # Prepare test set rows from preds
-    df = raw.copy()
-    df["logit_prob"] = preds["logit_prob"]
-    df["set"] = preds["set"]
-    test_df = df[df["set"] == "test"].copy()
+    if "row_id" not in raw.columns:
+        raw = raw.reset_index(drop=True).copy()
+        raw["row_id"] = np.arange(len(raw))
+
+    if "row_id" not in preds.columns:
+        preds = preds.reset_index(drop=True).copy()
+        preds["row_id"] = np.arange(len(preds))
+
+df = raw.merge(preds[["row_id", "logit_prob", "set"]], on="row_id", how="inner")
+test_df = df[df["set"] == "test"].copy()
+
 
     # 2) ROC curve (test set)
     y_true = test_df["win"].astype(int).to_numpy()
