@@ -8,7 +8,6 @@ import pandas as pd
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     accuracy_score,
     log_loss,
@@ -24,31 +23,18 @@ try:
     # when running `python -m src.main ...`
     from .data_loading import load_raw_data  # type: ignore
     from .preprocessing import preprocess_data  # type: ignore
-    from .modeling import FEATURE_COLUMNS, make_feature_matrix  # type: ignore
 except Exception:  # pragma: no cover
     # when running `python src/main.py ...`
     from data_loading import load_raw_data  # type: ignore
     from preprocessing import preprocess_data  # type: ignore
-    from modeling import FEATURE_COLUMNS, make_feature_matrix  # type: ignore
 
 
 # ============================================================
 # RESULTS FOLDERS 
 # ============================================================
-
-# this part of the code is meant to create two separate results directories in order to distinguish simple and advanced model outputs
     
-# Simple model results 
-SIMPLE_ROOT = Path("results") / "simple"
-DIR_BACKTEST = SIMPLE_ROOT / "backtest"
-DIR_EV = SIMPLE_ROOT / "ev"
-DIR_MULTI_EV = SIMPLE_ROOT / "multi_threshold_ev"
-DIR_CAL = SIMPLE_ROOT / "calibration"
-DIR_HL = SIMPLE_ROOT / "hl_test"
-DIR_EFF = SIMPLE_ROOT / "efficiency"
-
-# Advanced model results 
-ADV_ROOT = Path("results") / "advanced"
+# Results directories 
+ADV_ROOT = Path("results") 
 ADV_DIR_TRAIN = ADV_ROOT / "training"
 ADV_DIR_PRED = ADV_ROOT / "predictions"
 ADV_DIR_EV = ADV_ROOT / "ev"
@@ -63,7 +49,7 @@ def ensure_dir(p: Path) -> None:
 
 
 # ============================================================
-# SHARED HELPERS
+# HELPERS
 # ============================================================
 def american_to_decimal(odds: float) -> float:
     if odds is None or pd.isna(odds) or odds == 0:
@@ -114,233 +100,7 @@ def _ensure_cleaned_csv() -> Path:
 
 
 # ============================================================
-# ===================== SIMPLE MODEL =====================
-# ============================================================
-
-def train_model_for_backtest(
-    df_clean: pd.DataFrame,
-    test_size: float = 0.3,
-    random_state: int = 42,
-) -> Tuple[LogisticRegression, pd.DataFrame, pd.DataFrame]:
-    X, y = make_feature_matrix(df_clean)
-
-    X_train, X_test, y_train, y_test, df_train, df_test = train_test_split(
-        X, y, df_clean, test_size=test_size, random_state=random_state, stratify=y
-    ) # relatively large test set so that calibration and EV estimates are statistically meaningful. 
-      # fixed seed makes the results reproducible and stratification is there to preserve the win/loss ratio across splits
-
-    model = LogisticRegression(max_iter=1000)
-    model.fit(X_train, y_train)
-
-    df_test = df_test.copy()
-    df_test["model_prob"] = model.predict_proba(X_test)[:, 1]
-    return model, df_train.copy(), df_test
-
-
-def run_simple_backtest() -> None:
-    ensure_dir(DIR_BACKTEST)
-
-    df_raw = load_raw_data()
-    df_clean = preprocess_data(df_raw)
-
-    X, y = make_feature_matrix(df_clean)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42, stratify=y
-    )
-
-    model = LogisticRegression(max_iter=1000)
-    model.fit(X_train, y_train)
-
-    y_pred = model.predict(X_test)
-    y_proba = model.predict_proba(X_test)[:, 1]
-
-    metrics = {
-        "accuracy": float(accuracy_score(y_test, y_pred)),
-        "log_loss": float(log_loss(y_test, y_proba)),
-        "roc_auc": float(roc_auc_score(y_test, y_proba)),
-        "brier": float(brier_score_loss(y_test, y_proba)),
-    }
-
-    out_txt = DIR_BACKTEST / "metrics.txt"
-    out_txt.write_text("\n".join([f"{k}: {v}" for k, v in metrics.items()]) + "\n")
-    print("[SIMPLE BACKTEST] Saved:", out_txt)
-
-
-def compute_ev_for_bets(edge_threshold: float = 0.02) -> pd.DataFrame:
-    df_raw = load_raw_data()
-    df_clean = preprocess_data(df_raw)
-
-    _, _, df_test = train_model_for_backtest(df_clean)
-
-    df_test = df_test.copy()
-    df_test["decimal_odds"] = df_test["moneyLine"].apply(american_to_decimal)
-    df_test["edge"] = df_test["model_prob"] - df_test["team_prob"]
-
-    bets = df_test[df_test["edge"] > edge_threshold].copy() # this is the part which will categorize which bets to use 
-    if bets.empty:
-        return bets
-
-    bets["payoff_if_win"] = bets["decimal_odds"] - 1.0
-    bets["ev_market"] = bets["team_prob"] * bets["payoff_if_win"] - (1 - bets["team_prob"]) * 1.0
-    bets["ev_model"] = bets["model_prob"] * bets["payoff_if_win"] - (1 - bets["model_prob"]) * 1.0
-    bets["realized_return"] = np.where(bets["win"] == 1, bets["payoff_if_win"], -1.0)
-    return bets
-# edge is defined here as the difference between the model and market probability. A positive edge means that the model gives higher win probability.
-# so, in this case, the model will take into consideration all the bets where the model assigns a probability 0.02 higher than what the market gives.
-# therefore, this part of the code is defining and extracting such bets, to later use for evaluation
-
-def run_simple_ev(edge_threshold: float = 0.02) -> None:
-    ensure_dir(DIR_EV)
-
-    bets = compute_ev_for_bets(edge_threshold=edge_threshold)
-    out_csv = DIR_EV / f"ev_bets_edge_{edge_threshold:.3f}.csv"
-
-    if bets.empty:
-        (DIR_EV / "note.txt").write_text(f"No bets selected for edge_threshold={edge_threshold}\n")
-        print("[SIMPLE EV] No bets selected.")
-        return
-
-    bets.to_csv(out_csv, index=False)
-    print("[SIMPLE EV] Saved:", out_csv)
-
-# the following function is similar to the one above, but instead of one, it tests for multiple thresholds to see whether the profitability is robust
-def run_simple_multi_threshold_ev() -> None:
-    ensure_dir(DIR_MULTI_EV)
-
-    cleaned_path = _ensure_cleaned_csv()
-    df = pd.read_csv(cleaned_path)
-
-    X = df[["team_prob"]]
-    y = df["win"].astype(int)
-    model = LogisticRegression(max_iter=1000)
-    model.fit(X, y)
-    df = df.copy()
-    df["model_prob"] = model.predict_proba(X)[:, 1]
-
-    thresholds = [0.005, 0.01, 0.02]
-    summary_lines: List[str] = ["EV SUMMARY ACROSS THRESHOLDS\n"]
-
-    for t in thresholds:
-        d = df.copy()
-        d["edge"] = d["model_prob"] - d["team_prob"]
-        bets = d[d["edge"].abs() >= t].copy()
-
-        if bets.empty:
-            summary_lines.append(f"\nThreshold {t}: 0 bets\n")
-            continue
-
-        bets["market_odds"] = bets["moneyLine"].abs() / 100.0
-        bets["market_ev"] = bets["team_prob"] - (1 - bets["team_prob"]) * bets["market_odds"]
-        bets["model_ev"] = bets["model_prob"] - (1 - bets["model_prob"]) * bets["market_odds"]
-        bets["profit"] = np.where(bets["win"] == 1, 1.0, -bets["market_odds"])
-
-        out_csv = DIR_MULTI_EV / f"ev_bets_edge_{t:.3f}.csv"
-        bets.to_csv(out_csv, index=False)
-
-        summary_lines.append(f"\nThreshold: {t}\n")
-        summary_lines.append(f"Number of bets: {len(bets)}\n")
-        summary_lines.append(f"Hit rate: {bets['win'].mean():.4f}\n")
-        summary_lines.append(f"Avg EV (model): {bets['model_ev'].mean():.6f}\n")
-        summary_lines.append(f"Avg EV (market): {bets['market_ev'].mean():.6f}\n")
-        summary_lines.append(f"Avg realized return: {bets['profit'].mean():.6f}\n")
-
-    out_txt = DIR_MULTI_EV / "ev_threshold_summary.txt"
-    out_txt.write_text("".join(summary_lines))
-    print("[SIMPLE MULTI-EV] Saved:", out_txt)
-
-#the next function is calibrating the market. Calibration evaluates whether events that are priced at probability p actually occur with that frequenc. 
-#in an efficient market, predicted probabilities shoudl be the same as the obsereved ones
-def run_simple_market_calibration(n_bins: int = 10) -> None:
-    ensure_dir(DIR_CAL)
-
-    df_raw = load_raw_data()
-    df_clean = preprocess_data(df_raw)
-
-    data = df_clean[["team_prob", "win"]].dropna().copy()
-    data["team_prob"] = data["team_prob"].clip(0.0, 1.0)
-
-    bins = np.linspace(0, 1, n_bins + 1)
-    data["prob_bin"] = pd.cut(data["team_prob"], bins=bins, include_lowest=True)
-
-    table = (
-        data.groupby("prob_bin")
-        .agg(mean_prob=("team_prob", "mean"), win_rate=("win", "mean"), count=("win", "size"))
-        .reset_index()
-    )
-
-    out_csv = DIR_CAL / "market_calibration_table.csv"
-    table.to_csv(out_csv, index=False)
-    print("[SIMPLE CAL] Saved:", out_csv)
-
-#the next part is preparing simple testing. It will evaluate calibration by comparing observed and expected wins withing probability bins. 
-# this test is used here because this simple model focuses on probability accuracy rather than ranking ability, since it is too simple and basic
-def hosmer_lemeshow(probs: np.ndarray, outcomes: np.ndarray, n_bins: int = 10) -> Tuple[float, float]:
-    df = pd.DataFrame({"p": probs, "y": outcomes})
-    df["bin"] = pd.qcut(df["p"], q=n_bins, duplicates="drop")
-
-    g = df.groupby("bin")
-    n = g.size().values
-    p_hat = g["p"].mean().values
-    obs = g["y"].sum().values
-
-    exp = n * p_hat
-    hl = np.sum((obs - exp) ** 2 / (n * p_hat * (1 - p_hat)))
-    dof = len(n) - 2
-    p_value = 1 - stats.chi2.cdf(hl, dof)
-    return float(hl), float(p_value)
-
-# afterwards, the test is ran in this portion of the code, 
-def run_simple_hl() -> None:
-    ensure_dir(DIR_HL)
-
-    cleaned_path = _ensure_cleaned_csv()
-    df = pd.read_csv(cleaned_path).dropna(subset=["team_prob", "opp_prob", "win"]).copy()
-
-    X = df[["team_prob", "opp_prob"]]
-    y = df["win"].astype(int)
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-
-    model = LogisticRegression(max_iter=1000)
-    model.fit(X_train, y_train)
-
-    model_prob = model.predict_proba(X_test)[:, 1]
-    book_prob = X_test["team_prob"].to_numpy()
-    outcomes = y_test.to_numpy()
-
-    hl_book, p_book = hosmer_lemeshow(book_prob, outcomes, n_bins=10)
-    hl_model, p_model = hosmer_lemeshow(model_prob, outcomes, n_bins=10)
-
-    out_txt = DIR_HL / "hl_summary.txt"
-    out_txt.write_text(
-        "Hosmer–Lemeshow (HL) Test\n\n"
-        f"Bookmaker: HL={hl_book:.6f}, p={p_book:.6f}\n"
-        f"Model:     HL={hl_model:.6f}, p={p_model:.6f}\n"
-    )
-    print("[SIMPLE HL] Saved:", out_txt)
-
-# the final part of the simple model combines all the different parts of the code and ensures that it can be run as one, instead of doing each part separately. 
-# if its more convenient to run only a simple model, in Nuvolos termina, run "python src/main.py run_simple_efficiency" to get all the output for the simple model part. 
-# if not, it is possible to run each part separately, using the names of each part defined below. If not, the entire script can be ran simply with "python src/main.py and it will show all the outputs of the entire pipeline 
-def run_simple_efficiency(edge_threshold: float = 0.02) -> None:
-    ensure_dir(DIR_EFF)
-
-    run_simple_backtest()
-    run_simple_market_calibration(n_bins=10)
-    run_simple_ev(edge_threshold=edge_threshold)
-    run_simple_multi_threshold_ev()
-    run_simple_hl()
-
-    (DIR_EFF / "run_log.txt").write_text(
-        f"Completed simple efficiency suite with edge_threshold={edge_threshold}\n"
-    )
-    print("[SIMPLE EFF] Saved:", DIR_EFF / "run_log.txt")
-
-
-# ============================================================
-# ===================== ADVANCED MODEL =====================
+# MODEL
 # ============================================================
 
 def build_advanced_features(path: str = "data/cleaned_data.csv") -> pd.DataFrame:
@@ -537,7 +297,7 @@ def run_advanced_ev_full() -> None:
     if df.empty:
         raise ValueError("Merge produced 0 rows. Check that raw and preds refer to the same dataset/order.")
 
-    # --- EV + edge
+    # EV + edge
     df["market_prob"] = df["moneyLine"].apply(moneyline_to_prob)
     df["EV"] = df.apply(lambda r: expected_value(r["logit_prob"], r["moneyLine"]), axis=1)
     df["edge"] = df["logit_prob"] - df["market_prob"]
@@ -593,14 +353,14 @@ def run_advanced_ev_testset() -> None:
             f"Missing advanced predictions: {pred_path}. Run `advanced-train` first."
         )
 
-    # --- Load cleaned data (raw)
+    # Load cleaned data (raw)
     cleaned_path = _ensure_cleaned_csv()
     raw = pd.read_csv(cleaned_path)
 
-    # --- Load predictions (preds) to prevent the NameError
+    # Load predictions (preds) to prevent the NameError
     preds = pd.read_csv(pred_path)
 
-    # --- Backward compatibility to ensure row_id exists on both sides
+    # Backward compatibility to ensure row_id exists on both sides
     if "row_id" not in raw.columns:
         raw = raw.reset_index(drop=True).copy()
         raw["row_id"] = np.arange(len(raw))
@@ -620,17 +380,17 @@ def run_advanced_ev_testset() -> None:
         how="inner",
     ).copy()
 
-    # --- Keep only test-set rows
+    # Keep only test-set rows
     df = df[df["set"] == "test"].copy()
     if df.empty:
         raise ValueError("No rows labeled set=='test'. Re-run advanced-train or check split logic.")
 
-    # --- EV + edge
+    # EV + edge
     df["market_prob"] = df["moneyLine"].apply(moneyline_to_prob)
     df["EV"] = df.apply(lambda r: expected_value(r["logit_prob"], r["moneyLine"]), axis=1)
     df["edge"] = df["logit_prob"] - df["market_prob"]
 
-    # --- Profit for 1-unit stake
+    # Profit for 1-unit stake
     def profit_row(r: pd.Series) -> float:
         if r["win"] == 1:
             if r["moneyLine"] > 0:
@@ -640,7 +400,7 @@ def run_advanced_ev_testset() -> None:
 
     df["profit"] = df.apply(profit_row, axis=1)
 
-    # --- EV buckets (robust deciles even if EV has ties)
+    # EV buckets (robust deciles even if EV has ties)
     df["ev_bucket"] = pd.qcut(df["EV"].rank(method="first"), 10, labels=False)
 
     bucket_results = (
@@ -654,10 +414,10 @@ def run_advanced_ev_testset() -> None:
         .reset_index()
     )
 
-    # --- Spearman significance on bucket-level relationship
+    # Spearman significance on bucket-level relationship
     rho, pval = stats.spearmanr(bucket_results["avg_EV"], bucket_results["ROI"])
 
-    # --- Save outputs
+    # Save outputs
     out_csv = ADV_DIR_TEST / "test_ev_results.csv"
     df.to_csv(out_csv, index=False)
 
@@ -894,24 +654,8 @@ def run_advanced_efficiency() -> None:
 def main(argv: Optional[List[str]] = None) -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Main runner (simple + advanced).")
+    parser = argparse.ArgumentParser(description="Main runner (advanced model).")
     sub = parser.add_subparsers(dest="cmd", required=False)
-
-    # -------- Simple commands (unchanged)
-    sub.add_parser("simple-backtest")
-    p_ev = sub.add_parser("simple-ev")
-    p_ev.add_argument("--edge-threshold", type=float, default=0.02)
-
-    sub.add_parser("simple-multi-ev")
-
-    p_cal = sub.add_parser("simple-calibration")
-    p_cal.add_argument("--bins", type=int, default=10)
-
-    sub.add_parser("simple-hl")
-
-    p_eff = sub.add_parser("simple-efficiency")
-    p_eff.add_argument("--edge-threshold", type=float, default=0.02)
-
     # -------- Advanced commands 
     sub.add_parser("advanced-train")
     sub.add_parser("advanced-ev")
@@ -923,24 +667,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     args = parser.parse_args(argv)
     # if no cmd is given, this allows to run the entire model without fail 
     if args.cmd is None:
-        run_simple_efficiency()
         run_advanced_efficiency()
         return
-
-
-    # ---- Simple dispatch
-    if args.cmd == "simple-backtest":
-        run_simple_backtest()
-    elif args.cmd == "simple-ev":
-        run_simple_ev(edge_threshold=float(args.edge_threshold))
-    elif args.cmd == "simple-multi-ev":
-        run_simple_multi_threshold_ev()
-    elif args.cmd == "simple-calibration":
-        run_simple_market_calibration(n_bins=int(args.bins))
-    elif args.cmd == "simple-hl":
-        run_simple_hl()
-    elif args.cmd == "simple-efficiency":
-        run_simple_efficiency(edge_threshold=float(args.edge_threshold))
 
     # ---- Advanced dispatch
     elif args.cmd == "advanced-train":
