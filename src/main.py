@@ -701,8 +701,14 @@ def run_advanced_figures() -> None:
         preds = preds.reset_index(drop=True).copy()
         preds["row_id"] = np.arange(len(preds))
 
-df = raw.merge(preds[["row_id", "logit_prob", "set"]], on="row_id", how="inner")
-test_df = df[df["set"] == "test"].copy()
+cleaned_path = _ensure_cleaned_csv()
+raw = pd.read_csv(cleaned_path)
+
+df = raw.merge(
+    preds[["row_id", "logit_prob", "set"]],
+    on="row_id",
+    how="inner",
+)
 
 
    # 2) ROC curve (test set)
