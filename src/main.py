@@ -250,6 +250,7 @@ def run_advanced_train() -> None:
     out_csv = ADV_DIR_PRED / "advanced_predictions.csv"
     preds_df.to_csv(out_csv, index=False)
     print("[ADV TRAIN] Saved:", out_csv)
+    print(f"\nBest model selected: {best_model_name}\n")
 
 
 def run_advanced_ev_full() -> None:
