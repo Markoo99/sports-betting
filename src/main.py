@@ -708,24 +708,60 @@ def run_advanced_significance_from_full() -> None:
 
 
 def run_advanced_figures() -> None:
+    """
+    Generates 6 diagnostic figures for the advanced model:
+    1) feature importance (GB)
+    2) ROC curve (test)
+    3) calibration curve (test)
+    4) avg EV by bucket (test)
+    5) total profit by bucket (test)
+    6) edge vs profit scatter (test)
+    """
     ensure_dir(ADV_DIR_FIG)
 
     pred_path = ADV_DIR_PRED / "advanced_predictions.csv"
     if not pred_path.exists():
         raise FileNotFoundError(f"Missing predictions: {pred_path}. Run `advanced-train` first.")
 
-    raw = pd.read_csv("data/cleaned_data.csv")
+    # Load cleaned data and predictions 
+    cleaned_path = _ensure_cleaned_csv()
+    raw = pd.read_csv(cleaned_path)
     preds = pd.read_csv(pred_path)
-    if "set" not in preds.columns:
-        raise ValueError("Predictions file does not contain 'set'. Re-run advanced-train.")
 
-    # Build advanced features for feature importance + for test curves
+    # Backward compatibility to ensure row_id exists on both sides
+    if "row_id" not in raw.columns:
+        raw = raw.reset_index(drop=True).copy()
+        raw["row_id"] = np.arange(len(raw))
+
+    if "row_id" not in preds.columns:
+        preds = preds.reset_index(drop=True).copy()
+        preds["row_id"] = np.arange(len(preds))
+
+    if "set" not in preds.columns:
+        raise ValueError("Predictions file missing 'set'. Re-run advanced-train.")
+
+    # Safe merge (never rely on row order)
+    df = raw.merge(
+        preds[["row_id", "logit_prob", "set"]],
+        on="row_id",
+        how="inner",
+    ).copy()
+
+    test_df = df[df["set"] == "test"].copy()
+    if test_df.empty:
+        raise ValueError("No rows labeled set=='test'. Re-run advanced-train or check split logic.")
+
+    # 1) Feature importance (Gradient Boosting) on advanced features (no leakage)
     feat = build_advanced_features("data/cleaned_data.csv")
     y = feat["win"].astype(int)
     X = feat.drop(columns=["win"])
 
-    # 1) Feature importance (Gradient Boosting)
-    gb = GradientBoostingClassifier(n_estimators=300, learning_rate=0.05, max_depth=3, random_state=42)
+    gb = GradientBoostingClassifier(
+        n_estimators=300,
+        learning_rate=0.05,
+        max_depth=3,
+        random_state=42,
+    )
     gb.fit(X, y)
     importances = pd.Series(gb.feature_importances_, index=X.columns).sort_values(ascending=False).head(20)
 
@@ -737,129 +773,100 @@ def run_advanced_figures() -> None:
     plt.savefig(out_path, dpi=300)
     plt.close()
 
-    # Prepare test set rows from preds
-    if "row_id" not in raw.columns:
-        raw = raw.reset_index(drop=True).copy()
-        raw["row_id"] = np.arange(len(raw))
+    # 2) ROC curve (test set)
+    y_true = test_df["win"].astype(int).to_numpy()
+    y_score = test_df["logit_prob"].to_numpy()
 
-    if "row_id" not in preds.columns:
-        preds = preds.reset_index(drop=True).copy()
-        preds["row_id"] = np.arange(len(preds))
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    auc = roc_auc_score(y_true, y_score)
 
-cleaned_path = _ensure_cleaned_csv()
-raw = pd.read_csv(cleaned_path)
-
-df = raw.merge(
-    preds[["row_id", "logit_prob", "set"]],
-    on="row_id",
-    how="inner",
-)
-
-
-   # 2) ROC curve (test set)
-y_true = test_df["win"].astype(int).to_numpy()
-y_score = test_df["logit_prob"].to_numpy()
-fpr, tpr, _ = roc_curve(y_true, y_score)
-auc = roc_auc_score(y_true, y_score)
-
-plt.figure()
-plt.plot(fpr, tpr, label=f"AUC={auc:.3f}")
-plt.plot([0, 1], [0, 1], linestyle="--")
-plt.xlabel("False Positive Rate")
-plt.ylabel("True Positive Rate")
-plt.title("ROC Curve (Test Set)")
-plt.legend()
-plt.tight_layout()
-out_path = ADV_DIR_FIG / "roc_curve_test.png"
-plt.savefig(out_path, dpi=300)
-plt.close()
+    plt.figure()
+    plt.plot(fpr, tpr, label=f"AUC={auc:.3f}")
+    plt.plot([0, 1], [0, 1], linestyle="--")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve (Test Set)")
+    plt.legend()
+    plt.tight_layout()
+    out_path = ADV_DIR_FIG / "roc_curve_test.png"
+    plt.savefig(out_path, dpi=300)
+    plt.close()
 
     # 3) Calibration curve (test set)
-prob_true, prob_pred = calibration_curve(y_true, y_score, n_bins=10, strategy="quantile")
-plt.figure()
-plt.plot(prob_pred, prob_true, marker="o")
-plt.plot([0, 1], [0, 1], linestyle="--")
-plt.xlabel("Mean Predicted Probability")
-plt.ylabel("Observed Win Rate")
-plt.title("Calibration Curve (Test Set)")
-plt.tight_layout()
-out_path = ADV_DIR_FIG / "calibration_curve_test.png"
-plt.savefig(out_path, dpi=300)
-plt.close()
+    prob_true, prob_pred = calibration_curve(y_true, y_score, n_bins=10, strategy="quantile")
+
+    plt.figure()
+    plt.plot(prob_pred, prob_true, marker="o")
+    plt.plot([0, 1], [0, 1], linestyle="--")
+    plt.xlabel("Mean Predicted Probability")
+    plt.ylabel("Observed Win Rate")
+    plt.title("Calibration Curve (Test Set)")
+    plt.tight_layout()
+    out_path = ADV_DIR_FIG / "calibration_curve_test.png"
+    plt.savefig(out_path, dpi=300)
+    plt.close()
 
     # 4-6) EV/profit/edge plots on test set
-test_df["market_prob"] = test_df["moneyLine"].apply(moneyline_to_prob)
-test_df["EV"] = test_df.apply(lambda r: expected_value(r["logit_prob"], r["moneyLine"]), axis=1)
-test_df["edge"] = test_df["logit_prob"] - test_df["market_prob"]
+    test_df["market_prob"] = test_df["moneyLine"].apply(moneyline_to_prob)
+    test_df["EV"] = test_df.apply(lambda r: expected_value(r["logit_prob"], r["moneyLine"]), axis=1)
+    test_df["edge"] = test_df["logit_prob"] - test_df["market_prob"]
 
-def profit_row(r: pd.Series) -> float:
-    if r["win"] == 1:
-        if r["moneyLine"] > 0:
-            return r["moneyLine"] / 100
-        return 100 / abs(r["moneyLine"])
-    return -1.0
+    def profit_row(r: pd.Series) -> float:
+        if r["win"] == 1:
+            if r["moneyLine"] > 0:
+                return r["moneyLine"] / 100
+            return 100 / abs(r["moneyLine"])
+        return -1.0
 
-test_df["profit"] = test_df.apply(profit_row, axis=1)
-test_df["ev_bucket"] = pd.qcut(test_df["EV"], 10, labels=False, duplicates="drop")
+    test_df["profit"] = test_df.apply(profit_row, axis=1)
 
-bucket = (
-    test_df.groupby("ev_bucket")
-    .agg(avg_EV=("EV", "mean"), avg_profit=("profit", "mean"), total_profit=("profit", "sum"), count=("profit", "count"))
-    .reset_index()
-)
+    # robust deciles
+    test_df["ev_bucket"] = pd.qcut(test_df["EV"].rank(method="first"), 10, labels=False)
+
+    bucket = (
+        test_df.groupby("ev_bucket")
+        .agg(
+            avg_EV=("EV", "mean"),
+            total_profit=("profit", "sum"),
+            count=("profit", "count"),
+        )
+        .reset_index()
+    )
 
     # EV by bucket
-plt.figure()
-plt.plot(bucket["ev_bucket"], bucket["avg_EV"], marker="o")
-plt.xlabel("EV Bucket")
-plt.ylabel("Average EV")
-plt.title("Average EV by Bucket (Test Set)")
-plt.tight_layout()
-out_path = ADV_DIR_FIG / "ev_by_bucket_test.png"
-plt.savefig(out_path, dpi=300)
-plt.close()
+    plt.figure()
+    plt.plot(bucket["ev_bucket"], bucket["avg_EV"], marker="o")
+    plt.xlabel("EV Bucket")
+    plt.ylabel("Average EV")
+    plt.title("Average EV by Bucket (Test Set)")
+    plt.tight_layout()
+    out_path = ADV_DIR_FIG / "ev_by_bucket_test.png"
+    plt.savefig(out_path, dpi=300)
+    plt.close()
 
     # Profit by bucket
-plt.figure()
-plt.plot(bucket["ev_bucket"], bucket["total_profit"], marker="o")
-plt.xlabel("EV Bucket")
-plt.ylabel("Total Profit")
-plt.title("Total Profit by Bucket (Test Set)")
-plt.tight_layout()
-out_path = ADV_DIR_FIG / "profit_by_bucket_test.png"
-plt.savefig(out_path, dpi=300)
-plt.close()
+    plt.figure()
+    plt.plot(bucket["ev_bucket"], bucket["total_profit"], marker="o")
+    plt.xlabel("EV Bucket")
+    plt.ylabel("Total Profit")
+    plt.title("Total Profit by Bucket (Test Set)")
+    plt.tight_layout()
+    out_path = ADV_DIR_FIG / "profit_by_bucket_test.png"
+    plt.savefig(out_path, dpi=300)
+    plt.close()
 
     # Edge vs profit scatter
-plt.figure()
-plt.scatter(test_df["edge"], test_df["profit"], s=10)
-plt.xlabel("Edge (model_prob - market_prob)")
-plt.ylabel("Realized Profit")
-plt.title("Edge vs Realized Profit (Test Set)")
-plt.tight_layout()
-out_path = ADV_DIR_FIG / "edge_vs_profit_test.png"
-plt.savefig(out_path, dpi=300)
-plt.close()
+    plt.figure()
+    plt.scatter(test_df["edge"], test_df["profit"], s=10)
+    plt.xlabel("Edge (model_prob - market_prob)")
+    plt.ylabel("Realized Profit")
+    plt.title("Edge vs Realized Profit (Test Set)")
+    plt.tight_layout()
+    out_path = ADV_DIR_FIG / "edge_vs_profit_test.png"
+    plt.savefig(out_path, dpi=300)
+    plt.close()
 
-print("[ADV FIGURES] Saved 6 figures to:", ADV_DIR_FIG)
-
-
-def run_advanced_efficiency() -> None:
-    """
-    This code allows to only run the advanced model as follows "python src/main.py run_advanced_efficiency"
-    If not, possible to run each part of the code using the same logic, but instead of run advanced function, choose the one that is needed from the list below
-    Lastly, possible to also run just the entire main.py giving all the outputs from this pipeline 
-    """
-    ensure_dir(ADV_DIR_EFF)
-
-    run_advanced_train()
-    run_advanced_ev_full()
-    run_advanced_ev_testset()
-    run_advanced_significance_from_full()
-    run_advanced_figures()
-
-    (ADV_DIR_EFF / "run_log.txt").write_text("Completed advanced model suite.\n")
-    print("[ADV EFF] Saved:", ADV_DIR_EFF / "run_log.txt")
+    print("[ADV FIGURES] Saved 6 figures to:", ADV_DIR_FIG)
 
 
 # ============================================================
