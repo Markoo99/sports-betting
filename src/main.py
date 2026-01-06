@@ -868,6 +868,20 @@ def run_advanced_figures() -> None:
 
     print("[ADV FIGURES] Saved 6 figures to:", ADV_DIR_FIG)
 
+def run_advanced_efficiency() -> None:
+    """
+    Runs the full advanced-model pipeline and saves outputs to results/advanced/
+    """
+    ensure_dir(ADV_DIR_EFF)
+
+    run_advanced_train()
+    run_advanced_ev_full()
+    run_advanced_ev_testset()
+    run_advanced_significance_from_full()
+    run_advanced_figures()
+
+    (ADV_DIR_EFF / "run_log.txt").write_text("Completed advanced model suite.\n")
+    print("[ADV EFF] Saved:", ADV_DIR_EFF / "run_log.txt")
 
 # ============================================================
 # CLI: 
