@@ -1,0 +1,4 @@
+Hosmer–Lemeshow (HL) Test
+
+Bookmaker: HL=51.245381, p=0.000000
+Model:     HL=31.842595, p=0.000099
