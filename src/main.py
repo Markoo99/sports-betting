@@ -495,38 +495,54 @@ def run_advanced_train() -> None:
 def run_advanced_ev_full() -> None:
     """
     - uses cleaned_data + advanced predictions
-    - computes EV, edge, buckets, ROI by bucket
+    - computes EV, edge, profit
+    - buckets EV into deciles
+    - saves row-level EV results + bucket summary
     """
     ensure_dir(ADV_DIR_EV)
 
     pred_path = ADV_DIR_PRED / "advanced_predictions.csv"
     if not pred_path.exists():
-        raise FileNotFoundError(f"Missing advanced predictions: {pred_path}. Run `advanced-train` first.")
+        raise FileNotFoundError(
+            f"Missing advanced predictions: {pred_path}. Run `advanced-train` first."
+        )
 
+    # --- Load cleaned data (raw)
     cleaned_path = _ensure_cleaned_csv()
     raw = pd.read_csv(cleaned_path)
+
+    # --- Load predictions prevents NameError
     preds = pd.read_csv(pred_path)
 
-    # Merge by row_id to guarantee alignment
+    # Backward compatibility to ensure row_id exists on both sides
     if "row_id" not in raw.columns:
         raw = raw.reset_index(drop=True).copy()
         raw["row_id"] = np.arange(len(raw))
 
-    # 
     if "row_id" not in preds.columns:
         preds = preds.reset_index(drop=True).copy()
         preds["row_id"] = np.arange(len(preds))
 
+    # If set column is missing, still allow full EV but skip train/test filtering
+    if "set" not in preds.columns:
+        preds["set"] = "unknown"
 
-    df = raw.merge(preds[["row_id", "logit_prob", "set"]], on="row_id", how="inner").copy()
+    # --- Merge safely (never rely on row order)
+    df = raw.merge(
+        preds[["row_id", "logit_prob", "set"]],
+        on="row_id",
+        how="inner",
+    ).copy()
 
+    if df.empty:
+        raise ValueError("Merge produced 0 rows. Check that raw and preds refer to the same dataset/order.")
+
+    # --- EV + edge
     df["market_prob"] = df["moneyLine"].apply(moneyline_to_prob)
     df["EV"] = df.apply(lambda r: expected_value(r["logit_prob"], r["moneyLine"]), axis=1)
     df["edge"] = df["logit_prob"] - df["market_prob"]
 
-    # Use true deciles robustly (avoids qcut collapsing due to ties)
-    df["ev_bucket"] = pd.qcut(df["EV"].rank(method="first"), 10, labels=False)
-
+    # Profit for 1-unit stake
     def profit_row(r: pd.Series) -> float:
         if r["win"] == 1:
             if r["moneyLine"] > 0:
@@ -535,6 +551,9 @@ def run_advanced_ev_full() -> None:
         return -1.0
 
     df["profit"] = df.apply(profit_row, axis=1)
+
+    # EV buckets 
+    df["ev_bucket"] = pd.qcut(df["EV"].rank(method="first"), 10, labels=False)
 
     bucket_results = (
         df.groupby("ev_bucket")
@@ -547,6 +566,7 @@ def run_advanced_ev_full() -> None:
         .reset_index()
     )
 
+    # Save outputs
     out_csv = ADV_DIR_EV / "ev_results_full.csv"
     df.to_csv(out_csv, index=False)
 
@@ -557,37 +577,60 @@ def run_advanced_ev_full() -> None:
     print("[ADV EV FULL] Saved:", out_txt)
 
 
+
 def run_advanced_ev_testset() -> None:
     """
     - restricted to rows labeled set=='test'
+    - computes EV, edge, profit
+    - buckets EV into deciles
     - runs Spearman between avg_EV and ROI at bucket level
     """
     ensure_dir(ADV_DIR_TEST)
 
     pred_path = ADV_DIR_PRED / "advanced_predictions.csv"
     if not pred_path.exists():
-        raise FileNotFoundError(f"Missing advanced predictions: {pred_path}. Run `advanced-train` first.")
+        raise FileNotFoundError(
+            f"Missing advanced predictions: {pred_path}. Run `advanced-train` first."
+        )
 
+    # --- Load cleaned data (raw)
     cleaned_path = _ensure_cleaned_csv()
     raw = pd.read_csv(cleaned_path)
+
+    # --- Load predictions (preds) to prevent the NameError
     preds = pd.read_csv(pred_path)
 
+    # --- Backward compatibility to ensure row_id exists on both sides
     if "row_id" not in raw.columns:
-        raise ValueError("cleaned_data.csv missing row_id. Delete it and re-run so it gets regenerated.")
+        raw = raw.reset_index(drop=True).copy()
+        raw["row_id"] = np.arange(len(raw))
+
     if "row_id" not in preds.columns:
         preds = preds.reset_index(drop=True).copy()
         preds["row_id"] = np.arange(len(preds))
 
+    # We need the train/test split label to filter the test set
     if "set" not in preds.columns:
-        raise ValueError("Predictions file missing 'set'. Re-run advanced-train.")
+        raise ValueError("Predictions file missing 'set' column. Re-run advanced-train.")
 
-    df = raw.merge(preds[["row_id", "logit_prob", "set"]], on="row_id", how="inner").copy()
+    # --- Merge safely (never rely on row order)
+    df = raw.merge(
+        preds[["row_id", "logit_prob", "set"]],
+        on="row_id",
+        how="inner",
+    ).copy()
+
+    # --- Keep only test-set rows
     df = df[df["set"] == "test"].copy()
+    if df.empty:
+        raise ValueError("No rows labeled set=='test'. Re-run advanced-train or check split logic.")
 
+    # --- EV + edge
     df["market_prob"] = df["moneyLine"].apply(moneyline_to_prob)
     df["EV"] = df.apply(lambda r: expected_value(r["logit_prob"], r["moneyLine"]), axis=1)
     df["edge"] = df["logit_prob"] - df["market_prob"]
 
+    # --- Profit for 1-unit stake
     def profit_row(r: pd.Series) -> float:
         if r["win"] == 1:
             if r["moneyLine"] > 0:
@@ -597,7 +640,7 @@ def run_advanced_ev_testset() -> None:
 
     df["profit"] = df.apply(profit_row, axis=1)
 
-    # True deciles (robust to ties)
+    # --- EV buckets (robust deciles even if EV has ties)
     df["ev_bucket"] = pd.qcut(df["EV"].rank(method="first"), 10, labels=False)
 
     bucket_results = (
@@ -611,8 +654,10 @@ def run_advanced_ev_testset() -> None:
         .reset_index()
     )
 
+    # --- Spearman significance on bucket-level relationship
     rho, pval = stats.spearmanr(bucket_results["avg_EV"], bucket_results["ROI"])
 
+    # --- Save outputs
     out_csv = ADV_DIR_TEST / "test_ev_results.csv"
     df.to_csv(out_csv, index=False)
 
