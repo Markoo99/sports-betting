@@ -20,11 +20,9 @@ from scipy import stats
 
 import matplotlib.pyplot as plt
 try:
-    # when running `python -m src.main ...`
     from .data_loading import load_raw_data  # type: ignore
     from .preprocessing import preprocess_data  # type: ignore
-except Exception:  # pragma: no cover
-    # when running `python src/main.py ...`
+except Exception:  # pragma: no cover`
     from data_loading import load_raw_data  # type: ignore
     from preprocessing import preprocess_data  # type: ignore
 
@@ -105,7 +103,7 @@ def _ensure_cleaned_csv() -> Path:
 
 def build_advanced_features(path: str = "data/cleaned_data.csv") -> pd.DataFrame:
     """
-    The advanced model expands the feature space beyond raw implied probabilities, it must only use information available pre-game to avoid leakage.
+    The advanced model expands the feature space beyond raw implied probabilities, it must only use information available pre-game to avoid leakage
     """
     df = pd.read_csv(path)
 
@@ -651,7 +649,7 @@ def run_advanced_efficiency() -> None:
 # main() function centralizes all execution logic so the file can act as a single reproducible entrypoint for the project.
 # Accepting argv explicitly also allows programmatic execution without relying on sys.argv.
 # in the sub = parser.ad... function, I changed the "required" part. Before, when it was "required = True", 
-# I wasn't able to run the entire code. Changing this to False allows anybody to run the entire pipeline.
+# I wasn't able to run the entire code. Changing this to False allows anybody to run the entire script
 def main(argv: Optional[List[str]] = None) -> None:
     import argparse
 
