@@ -1,4 +1,5 @@
-# **Testing Informational Efficiency in NBA Moneyline Betting Markets** 
+# Testing Informational Efficiency in NBA Moneyline Betting Markets
+
 
 **Category:** Business & Finance Tools / Statistical Analysis Tools  
 
@@ -8,7 +9,7 @@
 
 Since a very young age, I have been passionate about sports. I would like to use this project as an opportunity to connect my two main interests: sports and economics. Sports betting markets resemble financial markets, where participants make decisions based on risk awareness and perceived value. Bookmakers set odds according to expected outcomes while incorporating a margin (the “overround”) to ensure profitability and adjusting odds in response to betting volume to balance risk exposure.
 This project aims to explore whether sports betting markets are efficient—that is, whether bookmaker-implied probabilities accurately reflect true outcome probabilities. In economic terms, this mirrors the Efficient Market Hypothesis, where prices (or odds) fully incorporate available information. By analyzing historical betting data, I will assess whether systematic inefficiencies exist that could yield consistent positive expected returns.
----
+
 
 ## Planned Approach and Technologies
 
@@ -21,19 +22,19 @@ Train predictive models (e.g., logistic regression and random forest classifiers
 Compare model predictions to bookmaker-implied probabilities to identify potential biases or inefficiencies.
 Conduct hypothesis testing to assess whether the differences are statistically significant.
 Visualize cumulative returns, probability calibration curves, and other relevant metrics.
----
+
 
 ## Expected Challenges and How They’ll Be Addressed 
 
 One potential challenge is ensuring the dataset’s completeness and reliability. To address this, the analysis will focus on a single league (NBA) and use verified datasets with historical odds and results. Another issue is statistical validity: models might identify apparent inefficiencies due to random variation rather than genuine patterns. This will be mitigated by using out-of-sample testing, cross-validation, and confidence intervals to ensure robustness and reproducibility.
----
+
 
 ## Success Criteria
 
 The project will be considered successful if it produces a working system capable of importing, analyzing, and visualizing sports betting data while applying data science techniques to evaluate market efficiency. Success will be measured by the ability to train and evaluate predictive models, statistically compare model-derived probabilities to bookmaker odds, and interpret whether deviations suggest inefficiency. Achieving this would demonstrate the application of statistical and machine learning methods to an economically relevant question.
----
+
 
 ## Stretch Goals  
 
 If time permits, Monte Carlo simulation will be used to simulate long term outcomes. 
----
+
