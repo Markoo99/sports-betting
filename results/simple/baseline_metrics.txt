@@ -1,0 +1,4 @@
+Baseline Logistic Regression (random split)
+accuracy: 0.685114
+log_loss: 0.591353
+roc_auc: 0.750173
