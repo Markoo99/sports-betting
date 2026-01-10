@@ -59,8 +59,6 @@ def main() -> None:
     run_advanced_ev_testset()
     run_advanced_significance_from_full()
     run_advanced_figures()
-    run_advanced_efficiency()
-
 
 if __name__ == "__main__":
     main()
