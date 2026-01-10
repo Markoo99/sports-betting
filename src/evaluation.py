@@ -469,7 +469,7 @@ def run_advanced_significance_from_full() -> None:
 def run_advanced_figures() -> None:
     """
     Generates 6 diagnostic figures for the advanced model:
-    1) feature importance (GB)
+    1) feature importance (LR)
     2) ROC curve (test)
     3) calibration curve (test)
     4) avg EV by bucket (test)
@@ -510,27 +510,27 @@ def run_advanced_figures() -> None:
     if test_df.empty:
         raise ValueError("No rows labeled set=='test'. Re-run advanced-train or check split logic.")
 
-    # 1) Feature importance (Gradient Boosting) on advanced features (no leakage)
+    # 1) Feature importance (Logistic Regression coefficients)
     feat = build_advanced_features("data/cleaned_data.csv")
     y = feat["win"].astype(int)
     X = feat.drop(columns=["win"])
-
-    gb = GradientBoostingClassifier(
-        n_estimators=300,
-        learning_rate=0.05,
-        max_depth=3,
-        random_state=42,
-    )
-    gb.fit(X, y)
-    importances = pd.Series(gb.feature_importances_, index=X.columns).sort_values(ascending=False).head(20)
-
+    
+    lr = LogisticRegression(max_iter=1000, n_jobs=-1)
+    lr.fit(X, y)
+    
+    # Use absolute value of coefficients for importance ranking
+    coef = pd.Series(lr.coef_[0], index=X.columns)
+    importances = coef.abs().sort_values(ascending=False).head(20)
+    
     plt.figure()
     importances.sort_values().plot(kind="barh")
-    plt.title("Top Feature Importances (Gradient Boosting)")
+    plt.xlabel("Absolute Coefficient Value")
+    plt.title("Top Feature Importances (Logistic Regression)")
     plt.tight_layout()
-    out_path = ADV_DIR_FIG / "feature_importance_gb.png"
+    out_path = ADV_DIR_FIG / "feature_importance_lr.png"
     plt.savefig(out_path, dpi=300)
     plt.close()
+
 
     # 2) ROC curve (test set)
     y_true = test_df["win"].astype(int).to_numpy()
