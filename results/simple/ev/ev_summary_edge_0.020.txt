@@ -1,5 +1,0 @@
-num_bets: 404.0
-hit_rate: 0.09653465346534654
-avg_ev_model: 0.3972425415408469
-avg_ev_market: -1.2778557090363807e-17
-avg_realized_return: -0.1680776262483187

@@ -1,1 +1,0 @@
-Completed simple efficiency suite with edge_threshold=0.02
