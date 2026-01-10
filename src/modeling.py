@@ -6,8 +6,13 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, log_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
 
-from data_loading import load_raw_data
-from preprocessing import preprocess_data
+try:
+    from .data_loading import load_raw_data  # type: ignore
+    from .preprocessing import preprocess_data  # type: ignore
+except Exception:  # pragma: no cover
+    from data_loading import load_raw_data  # type: ignore
+    from preprocessing import preprocess_data  # type: ignore
+
 
 
 FEATURE_COLUMNS = ["team_prob", "opp_prob", "spread", "total"]
