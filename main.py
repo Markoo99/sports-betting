@@ -25,15 +25,15 @@ def main() -> None:
     print(f"[MAIN] Saved cleaned data to: {out_clean}")
 
     # -----------------------------
-    # 3) Run baseline modeling.py
+    # 3) Run baseline simple.py
     # -----------------------------
-    from src.modeling import make_feature_matrix, train_logistic_regression
+    from src.simple import make_feature_matrix, train_logistic_regression
 
     X, y = make_feature_matrix(df_clean)
     model, metrics = train_logistic_regression(X, y)
 
     # Save baseline metrics 
-    results_dir = Path("results") / "simple"
+    results_dir = Path("results") 
     results_dir.mkdir(parents=True, exist_ok=True)
     (results_dir / "baseline_metrics.txt").write_text(
         "Baseline Logistic Regression (random split)\n"
